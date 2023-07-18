@@ -39,6 +39,7 @@ import { GlobalConfig } from './config'
 import { GameConfig } from './game_config'
 import { DXVK } from './tools'
 import setup from './storeManagers/gog/setup'
+import nileSetup from './storeManagers/nile/setup'
 import {
   CallRunnerOptions,
   GameInfo,
@@ -217,6 +218,9 @@ async function prepareWineLaunch(
     if (runner === 'gog') {
       await setup(appName)
     }
+    if (runner === 'nile') {
+      await nileSetup(appName)
+    }
     if (runner === 'legendary') {
       await setupUbisoftConnect(appName)
     }
@@ -250,6 +254,10 @@ function setupEnvVars(gameSettings: GameSettings) {
     ret.DRI_PRIME = '1'
     ret.__NV_PRIME_RENDER_OFFLOAD = '1'
     ret.__GLX_VENDOR_LIBRARY_NAME = 'nvidia'
+  }
+
+  if (isMac && gameSettings.showFps) {
+    ret.MTL_HUD_ENABLED = '1'
   }
 
   if (gameSettings.enviromentOptions) {
@@ -307,17 +315,29 @@ function setupWineEnvVars(gameSettings: GameSettings, gameId = '0') {
     case 'crossover':
       ret.CX_BOTTLE = wineCrossoverBottle
   }
-
   if (gameSettings.showFps) {
-    ret.DXVK_HUD = 'fps'
+    isMac ? (ret.MTL_HUD_ENABLED = '1') : (ret.DXVK_HUD = 'fps')
   }
   if (gameSettings.enableDXVKFpsLimit) {
     ret.DXVK_FRAME_RATE = gameSettings.DXVKFpsCap
   }
-  if (gameSettings.enableFSR) {
-    ret.WINE_FULLSCREEN_FSR = '1'
-    ret.WINE_FULLSCREEN_FSR_STRENGTH =
-      gameSettings.maxSharpness?.toString() || '2'
+  if (
+    gameSettings.showMangohud &&
+    !gameSettings.enviromentOptions.find(
+      ({ key }) => key === 'MANGOHUD_CONFIGFILE'
+    )
+  ) {
+    if (!process.env.XDG_CONFIG_HOME) {
+      ret.MANGOHUD_CONFIGFILE = join(
+        flatPakHome,
+        '.config/MangoHud/MangoHud.conf'
+      )
+    } else {
+      ret.MANGOHUD_CONFIGFILE = join(
+        process.env.XDG_CONFIG_HOME,
+        'MangoHud/MangoHud.conf'
+      )
+    }
   }
   if (gameSettings.enableEsync && wineVersion.type !== 'proton') {
     ret.WINEESYNC = '1'
@@ -508,6 +528,7 @@ function launchCleanup(rpcClient?: RpcClient) {
     logInfo('Stopped Discord Rich Presence', LogPrefix.Backend)
   }
 }
+
 async function runWineCommand({
   gameSettings,
   commandParts,
